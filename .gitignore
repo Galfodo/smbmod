@@ -1,0 +1,5 @@
+*.bin
+*.nes*
+asm6.exe
+*.swp
+*~
