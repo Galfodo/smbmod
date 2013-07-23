@@ -3,3 +3,4 @@
 asm6.exe
 *.swp
 *~
+*.o
