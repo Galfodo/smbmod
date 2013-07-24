@@ -20,30 +20,7 @@
 
 ;-------------------------------------------------------------------------------------
 ;DEFINES
-
-;NES specific hardware defines
-
-PPU_CTRL_REG1         = $2000
-PPU_CTRL_REG2         = $2001
-PPU_STATUS            = $2002
-PPU_SPR_ADDR          = $2003
-PPU_SPR_DATA          = $2004
-PPU_SCROLL_REG        = $2005
-PPU_ADDRESS           = $2006
-PPU_DATA              = $2007
-
-SND_REGISTER          = $4000
-SND_SQUARE1_REG       = $4000
-SND_SQUARE2_REG       = $4004
-SND_TRIANGLE_REG      = $4008
-SND_NOISE_REG         = $400c
-SND_DELTA_REG         = $4010
-SND_MASTERCTRL_REG    = $4015
-
-SPR_DMA               = $4014
-JOYPAD_PORT           = $4016
-JOYPAD_PORT1          = $4016
-JOYPAD_PORT2          = $4017
+.include "nes.h"
 
 ; GAME SPECIFIC DEFINES
 
@@ -700,7 +677,7 @@ NonMaskableInterrupt:
                and #%01111111            ;save all other bits
                sta Mirror_PPU_CTRL_REG1
                and #%01111110            ;alter name table address to be $2800
-               sta PPU_CTRL_REG1         ;(essentially $2000) but save other bits
+               sta ppu::CTRL_REG1         ;(essentially $2000) but save other bits
                lda Mirror_PPU_CTRL_REG2  ;disable OAM and background display by default
                and #%11100110
                ldy DisableScreenFlag     ;get screen disable flag
@@ -709,11 +686,11 @@ NonMaskableInterrupt:
                ora #%00011110
 ScreenOff:     sta Mirror_PPU_CTRL_REG2  ;save bits for later but not in register at the moment
                and #%11100111            ;disable screen for now
-               sta PPU_CTRL_REG2
-               ldx PPU_STATUS            ;reset flip-flop and reset scroll registers to zero
+               sta ppu::CTRL_REG2
+               ldx ppu::STATUS            ;reset flip-flop and reset scroll registers to zero
                lda #$00
                jsr InitScroll
-               sta PPU_SPR_ADDR          ;reset spr-ram address register
+               sta ppu::SPR_ADDR          ;reset spr-ram address register
                lda #$02                  ;perform spr-ram DMA access on $0200-$02ff
                sta SPR_DMA
                ldx VRAM_Buffer_AddrCtrl  ;load control for pointer to buffer contents
@@ -733,7 +710,7 @@ InitBuffer:    ldx VRAM_Buffer_Offset,y
                sta VRAM_Buffer1,x
                sta VRAM_Buffer_AddrCtrl  ;reinit address control to $0301
                lda Mirror_PPU_CTRL_REG2  ;copy mirror of $2001 to register
-               sta PPU_CTRL_REG2
+               sta ppu::CTRL_REG2
                jsr SoundEngine           ;play sound
                jsr ReadJoypads           ;read joypads
                jsr PauseRoutine          ;handle pause
@@ -774,7 +751,7 @@ RotPRandomBit: ror PseudoRandomBitReg,x  ;rotate carry into d7, and rotate last 
                bne RotPRandomBit
                lda Sprite0HitDetectFlag  ;check for flag here
                beq SkipSprite0
-Sprite0Clr:    lda PPU_STATUS            ;wait for sprite 0 flag to clear, which will
+Sprite0Clr:    lda ppu::STATUS            ;wait for sprite 0 flag to clear, which will
                and #%01000000            ;not happen until vblank has ended
                bne Sprite0Clr
                lda GamePauseStatus       ;if in pause mode, do not bother with sprites at all
@@ -782,27 +759,27 @@ Sprite0Clr:    lda PPU_STATUS            ;wait for sprite 0 flag to clear, which
                bcs Sprite0Hit
                jsr MoveSpritesOffscreen
                jsr SpriteShuffler
-Sprite0Hit:    lda PPU_STATUS            ;do sprite #0 hit detection
+Sprite0Hit:    lda ppu::STATUS            ;do sprite #0 hit detection
                and #%01000000
                beq Sprite0Hit
                ldy #$14                  ;small delay, to wait until we hit horizontal blank time
 HBlankDelay:   dey
                bne HBlankDelay
 SkipSprite0:   lda HorizontalScroll      ;set scroll registers from variables
-               sta PPU_SCROLL_REG
+               sta ppu::SCROLL_REG
                lda VerticalScroll
-               sta PPU_SCROLL_REG
+               sta ppu::SCROLL_REG
                lda Mirror_PPU_CTRL_REG1  ;load saved mirror of $2000
                pha
-               sta PPU_CTRL_REG1
+               sta ppu::CTRL_REG1
                lda GamePauseStatus       ;if in pause mode, do not perform operation mode stuff
                lsr
                bcs SkipMainOper
                jsr OperModeExecutionTree ;otherwise do one of many, many possible subroutines
-SkipMainOper:  lda PPU_STATUS            ;reset flip-flop
+SkipMainOper:  lda ppu::STATUS            ;reset flip-flop
                pla
                ora #%10000000            ;reactivate NMIs
-               sta PPU_CTRL_REG1
+               sta ppu::CTRL_REG1
                rti                       ;we are done until the next frame!
 
 ;-------------------------------------------------------------------------------------
@@ -1547,15 +1524,15 @@ DrawTitleScreen:
             lda OperMode                 ;are we in title screen mode?
             bne IncModeTask_B            ;if not, exit
             lda #>TitleScreenDataOffset  ;load address $1ec0 into
-            sta PPU_ADDRESS              ;the vram address register
+            sta ppu::ADDRESS              ;the vram address register
             lda #<TitleScreenDataOffset
-            sta PPU_ADDRESS
+            sta ppu::ADDRESS
             lda #$03                     ;put address $0300 into
             sta $01                      ;the indirect at $00
             ldy #$00
             sty $00
-            lda PPU_DATA                 ;do one garbage read
-OutputTScr: lda PPU_DATA                 ;get title screen from chr-rom
+            lda ppu::DATA                 ;do one garbage read
+OutputTScr: lda ppu::DATA                 ;get title screen from chr-rom
             sta ($00),y                  ;store 256 bytes into buffer
             iny
             bne ChkHiByte                ;if not past 256 bytes, do not increment
@@ -2344,7 +2321,7 @@ JumpEngine:
 ;-------------------------------------------------------------------------------------
 
 InitializeNameTables:
-              lda PPU_STATUS            ;reset flip-flop
+              lda ppu::STATUS            ;reset flip-flop
               lda Mirror_PPU_CTRL_REG1  ;load mirror of ppu reg $2000
               ora #%00010000            ;set sprites for first 4k and background for second 4k
               and #%11110000            ;clear rest of lower nybble, leave higher alone
@@ -2352,13 +2329,13 @@ InitializeNameTables:
               lda #$24                  ;set vram address to start of name table 1
               jsr WriteNTAddr
               lda #$20                  ;and then set it to name table 0
-WriteNTAddr:  sta PPU_ADDRESS
+WriteNTAddr:  sta ppu::ADDRESS
               lda #$00
-              sta PPU_ADDRESS
+              sta ppu::ADDRESS
               ldx #$04                  ;clear name table with blank tile #24
               ldy #$c0
               lda #$24
-InitNTLoop:   sta PPU_DATA              ;count out exactly 768 tiles
+InitNTLoop:   sta ppu::DATA              ;count out exactly 768 tiles
               dey
               bne InitNTLoop
               dex
@@ -2367,7 +2344,7 @@ InitNTLoop:   sta PPU_DATA              ;count out exactly 768 tiles
               txa
               sta VRAM_Buffer1_Offset   ;init vram buffer 1 offset
               sta VRAM_Buffer1          ;init vram buffer 1
-InitATLoop:   sta PPU_DATA
+InitATLoop:   sta ppu::DATA
               dey
               bne InitATLoop
               sta HorizontalScroll      ;reset scroll variables
@@ -2379,15 +2356,15 @@ InitATLoop:   sta PPU_DATA
 
 ReadJoypads: 
               lda #$01               ;reset and clear strobe of joypad ports
-              sta JOYPAD_PORT
+              sta joypad::PORTS
               lsr
               tax                    ;start with joypad 1's port
-              sta JOYPAD_PORT
+              sta joypad::PORTS
               jsr ReadPortBits
               inx                    ;increment for joypad 2's port
 ReadPortBits: ldy #$08
 PortLoop:     pha                    ;push previous bit onto stack
-              lda JOYPAD_PORT,x      ;read current bit on joypad port
+              lda joypad::PORTS,x      ;read current bit on joypad port
               sta $00                ;check d1 and d0 of port output
               lsr                    ;this is necessary on the old
               ora $00                ;famicom systems in japan
@@ -2414,10 +2391,10 @@ Save8Bits:    pla
 ;$01 - vram buffer address table high
 
 WriteBufferToScreen:
-               sta PPU_ADDRESS           ;store high byte of vram address
+               sta ppu::ADDRESS           ;store high byte of vram address
                iny
                lda ($00),y               ;load next byte (second)
-               sta PPU_ADDRESS           ;store low byte of vram address
+               sta ppu::ADDRESS           ;store low byte of vram address
                iny
                lda ($00),y               ;load next byte (third)
                asl                       ;shift to left and save in stack
@@ -2438,7 +2415,7 @@ GetLength:     lsr                       ;shift back to the right to get proper 
 OutputToVRAM:  bcs RepeatByte            ;if carry set, repeat loading the same byte
                iny                       ;otherwise increment Y to load next byte
 RepeatByte:    lda ($00),y               ;load more data from buffer and write to vram
-               sta PPU_DATA
+               sta ppu::DATA
                dex                       ;done writing?
                bne OutputToVRAM
                sec          
@@ -2449,23 +2426,23 @@ RepeatByte:    lda ($00),y               ;load more data from buffer and write t
                adc $01
                sta $01
                lda #$3f                  ;sets vram address to $3f00
-               sta PPU_ADDRESS
+               sta ppu::ADDRESS
                lda #$00
-               sta PPU_ADDRESS
-               sta PPU_ADDRESS           ;then reinitializes it for some reason
-               sta PPU_ADDRESS
-UpdateScreen:  ldx PPU_STATUS            ;reset flip-flop
+               sta ppu::ADDRESS
+               sta ppu::ADDRESS           ;then reinitializes it for some reason
+               sta ppu::ADDRESS
+UpdateScreen:  ldx ppu::STATUS            ;reset flip-flop
                ldy #$00                  ;load first byte from indirect as a pointer
                lda ($00),y  
                bne WriteBufferToScreen   ;if byte is zero we have no further updates to make here
-InitScroll:    sta PPU_SCROLL_REG        ;store contents of A into scroll registers
-               sta PPU_SCROLL_REG        ;and end whatever subroutine led us here
+InitScroll:    sta ppu::SCROLL_REG        ;store contents of A into scroll registers
+               sta ppu::SCROLL_REG        ;and end whatever subroutine led us here
                rts
 
 ;-------------------------------------------------------------------------------------
 
 WritePPUReg1:
-               sta PPU_CTRL_REG1         ;write contents of A to PPU register 1
+               sta ppu::CTRL_REG1         ;write contents of A to PPU register 1
                sta Mirror_PPU_CTRL_REG1  ;and its mirror
                rts
 
@@ -15004,12 +14981,12 @@ SetHFAt: ora $04                    ;add other OAM attributes if necessary
 SoundEngine:
          lda OperMode              ;are we in title screen mode?
          bne SndOn
-         sta SND_MASTERCTRL_REG    ;if so, disable sound and leave
+         sta apu::MASTERCTRL_REG    ;if so, disable sound and leave
          rts
 SndOn:   lda #$ff
-         sta JOYPAD_PORT2          ;disable irqs and set frame counter mode???
+         sta joypad::PORT2          ;disable irqs and set frame counter mode???
          lda #$0f
-         sta SND_MASTERCTRL_REG    ;enable first four channels
+         sta apu::MASTERCTRL_REG    ;enable first four channels
          lda PauseModeFlag         ;is sound already in pause mode?
          bne InPause
          lda PauseSoundQueue       ;if not, check pause sfx queue    
@@ -15022,12 +14999,12 @@ InPause: lda PauseSoundBuffer      ;check pause sfx buffer
          sta PauseSoundBuffer      ;if queue full, store in buffer and activate
          sta PauseModeFlag         ;pause mode to interrupt game sounds
          lda #$00                  ;disable sound and clear sfx buffers
-         sta SND_MASTERCTRL_REG
+         sta apu::MASTERCTRL_REG
          sta Square1SoundBuffer
          sta Square2SoundBuffer
          sta NoiseSoundBuffer
          lda #$0f
-         sta SND_MASTERCTRL_REG    ;enable sound again
+         sta apu::MASTERCTRL_REG    ;enable sound again
          lda #$2a                  ;store length of sound in pause counter
          sta Squ1_SfxLenCounter
 PTone1F: lda #$44                  ;play first tone
@@ -15046,7 +15023,7 @@ PTRegC:  ldx #$84
 DecPauC: dec Squ1_SfxLenCounter    ;decrement pause sfx counter
          bne SkipSoundSubroutines
          lda #$00                  ;disable sound if in pause mode and
-         sta SND_MASTERCTRL_REG    ;not currently playing the pause sfx
+         sta apu::MASTERCTRL_REG    ;not currently playing the pause sfx
          lda PauseSoundBuffer      ;if no longer playing pause sfx, check to see
          cmp #$02                  ;if we need to be playing sound again
          bne SkipPIn
@@ -15081,14 +15058,14 @@ SkipSoundSubroutines:
 NoIncDAC: tya
           beq StrWave            ;if we are at zero, do not decrement 
           dec DAC_Counter        ;decrement counter
-StrWave:  sty SND_DELTA_REG+1    ;store into DMC load register (??)
+StrWave:  sty apu::DELTA_REG+1    ;store into DMC load register (??)
           rts                    ;we are done here
 
 ;--------------------------------
 
 Dump_Squ1_Regs:
-      sty SND_SQUARE1_REG+1  ;dump the contents of X and Y into square 1's control regs
-      stx SND_SQUARE1_REG
+      sty apu::SQUARE1_REG+1  ;dump the contents of X and Y into square 1's control regs
+      stx apu::SQUARE1_REG
       rts
       
 PlaySqu1Sfx:
@@ -15101,15 +15078,15 @@ Dump_Freq_Regs:
         tay
         lda FreqRegLookupTbl+1,y  ;use previous contents of A for sound reg offset
         beq NoTone                ;if zero, then do not load
-        sta SND_REGISTER+2,x      ;first byte goes into LSB of frequency divider
+        sta apu::REGISTERS+2,x      ;first byte goes into LSB of frequency divider
         lda FreqRegLookupTbl,y    ;second byte goes into 3 MSB plus extra bit for 
         ora #%00001000            ;length counter
-        sta SND_REGISTER+3,x
+        sta apu::REGISTERS+3,x
 NoTone: rts
 
 Dump_Sq2_Regs:
-      stx SND_SQUARE2_REG    ;dump the contents of X and Y into square 2's control regs
-      sty SND_SQUARE2_REG+1
+      stx apu::SQUARE2_REG    ;dump the contents of X and Y into square 2's control regs
+      sty apu::SQUARE2_REG+1
       rts
 
 PlaySqu2Sfx:
@@ -15183,7 +15160,7 @@ ContinueBumpThrow:
           cmp #$06   
           bne DecJpFPS
           lda #$bb                ;load second part directly
-          sta SND_SQUARE1_REG+1
+          sta apu::SQUARE1_REG+1
 DecJpFPS: bne BranchToDecLength1  ;unconditional branch
 
 
@@ -15238,11 +15215,11 @@ PlaySwimStomp:
 ContinueSwimStomp: 
       ldy Squ1_SfxLenCounter        ;look up reg contents in data section based on
       lda SwimStompEnvelopeData-1,y ;length of sound left, used to control sound's
-      sta SND_SQUARE1_REG           ;envelope
+      sta apu::SQUARE1_REG           ;envelope
       cpy #$06   
       bne BranchToDecLength1
       lda #$9e                      ;when the length counts down to a certain point, put this
-      sta SND_SQUARE1_REG+2         ;directly into the LSB of square 1's frequency divider
+      sta apu::SQUARE1_REG+2         ;directly into the LSB of square 1's frequency divider
 
 BranchToDecLength1: 
       bne DecrementSfx1Length  ;unconditional branch (regardless of how we got here)
@@ -15261,11 +15238,11 @@ ContinueSmackEnemy:
         cpy #$08
         bne SmSpc
         lda #$a0                ;if we're at the about-halfway point, make the second tone
-        sta SND_SQUARE1_REG+2   ;in the smack enemy sound
+        sta apu::SQUARE1_REG+2   ;in the smack enemy sound
         lda #$9f
         bne SmTick
 SmSpc:  lda #$90                ;this creates spaces in the sound, giving it its distinct noise
-SmTick: sta SND_SQUARE1_REG
+SmTick: sta apu::SQUARE1_REG
 
 DecrementSfx1Length:
       dec Squ1_SfxLenCounter    ;decrement length of sfx
@@ -15275,9 +15252,9 @@ StopSquare1Sfx:
         ldx #$00                ;if end of sfx reached, clear buffer
         stx $f1                 ;and stop making the sfx
         ldx #$0e
-        stx SND_MASTERCTRL_REG
+        stx apu::MASTERCTRL_REG
         ldx #$0f
-        stx SND_MASTERCTRL_REG
+        stx apu::MASTERCTRL_REG
 ExSfx1: rts
 
 PlayPipeDownInj:  
@@ -15337,7 +15314,7 @@ ContinueCGrabTTick:
         cmp #$30                ;timer tick sound also executes this, not sure why
         bne N2Tone
         lda #$54                ;if so, load the tone directly into the reg
-        sta SND_SQUARE2_REG+2
+        sta apu::SQUARE2_REG+2
 N2Tone: bne DecrementSfx2Length
 
 PlayBlast:
@@ -15381,9 +15358,9 @@ EmptySfx2Buffer:
 
 StopSquare2Sfx:
         ldx #$0d                ;stop playing the sfx
-        stx SND_MASTERCTRL_REG 
+        stx apu::MASTERCTRL_REG 
         ldx #$0f
-        stx SND_MASTERCTRL_REG
+        stx apu::MASTERCTRL_REG
 ExSfx2: rts
 
 Square2SfxHandler:
@@ -15478,7 +15455,7 @@ PlayGrowVine:
 GrowItemRegs:
         sta Squ2_SfxLenCounter   
         lda #$7f                  ;load contents of reg for both sounds directly
-        sta SND_SQUARE2_REG+1
+        sta apu::SQUARE2_REG+1
         lda #$00                  ;start secondary counter for both sounds
         sta Sfx_SecondaryCounter
 
@@ -15490,7 +15467,7 @@ ContinueGrowItems:
         cpy Squ2_SfxLenCounter    ;have we reached the end yet?
         beq StopGrowItems         ;if so, branch to jump, and stop playing sounds
         lda #$9d                  ;load contents of other reg directly
-        sta SND_SQUARE2_REG
+        sta apu::SQUARE2_REG
         lda PUp_VGrow_FreqData,y  ;use secondary counter / 2 as offset for frequency regs
         jsr SetFreq_Squ2
         rts
@@ -15517,16 +15494,16 @@ ContinueBrickShatter:
         lda BrickShatterEnvData,y
 
 PlayNoiseSfx:
-        sta SND_NOISE_REG        ;play the sfx
-        stx SND_NOISE_REG+2
+        sta apu::NOISE_REG        ;play the sfx
+        stx apu::NOISE_REG+2
         lda #$18
-        sta SND_NOISE_REG+3
+        sta apu::NOISE_REG+3
 
 DecrementSfx3Length:
         dec Noise_SfxLenCounter  ;decrement length of sfx
         bne ExSfx3
         lda #$f0                 ;if done, stop playing the sfx
-        sta SND_NOISE_REG
+        sta apu::NOISE_REG
         lda #$00
         sta NoiseSoundBuffer
 ExSfx3: rts
@@ -15647,9 +15624,9 @@ LoadHeader:
         sta MusicOffset_Square2
         sta AltRegContentFlag        ;initialize alternate control reg data used by square 1
         lda #$0b                     ;disable triangle channel and reenable it
-        sta SND_MASTERCTRL_REG
+        sta apu::MASTERCTRL_REG
         lda #$0f
-        sta SND_MASTERCTRL_REG
+        sta apu::MASTERCTRL_REG
 
 HandleSquare2Music:
         dec Squ2_NoteLenCounter  ;decrement square 2 note length
@@ -15675,10 +15652,10 @@ NotTRO: and #VictoryMusic        ;check for victory music (the only secondary th
         lda #$00                 ;clear primary and secondary buffers and initialize
         sta AreaMusicBuffer      ;control regs of square and triangle channels
         sta EventMusicBuffer
-        sta SND_TRIANGLE_REG
+        sta apu::TRIANGLE_REG
         lda #$90    
-        sta SND_SQUARE1_REG
-        sta SND_SQUARE2_REG
+        sta apu::SQUARE1_REG
+        sta apu::SQUARE2_REG
         rts
 
 MusicLoopBack:
@@ -15715,9 +15692,9 @@ MiscSqu2MusicTasks:
            beq NoDecEnv1
            dec Squ2_EnvelopeDataCtrl  ;decrement unless already zero
 NoDecEnv1: jsr LoadEnvelopeData       ;do a load of envelope data to replace default
-           sta SND_SQUARE2_REG        ;based on offset set by first load unless playing
+           sta apu::SQUARE2_REG        ;based on offset set by first load unless playing
            ldx #$7f                   ;death music or d4 set on secondary buffer
-           stx SND_SQUARE2_REG+1
+           stx apu::SQUARE2_REG+1
 
 HandleSquare1Music:
         ldy MusicOffset_Square1    ;is there a nonzero offset here?
@@ -15731,9 +15708,9 @@ FetchSqu1MusicData:
         lda (MusicData),y
         bne Squ1NoteHandler        ;if nonzero, then skip this part
         lda #$83
-        sta SND_SQUARE1_REG        ;store some data into control regs for square 1
+        sta apu::SQUARE1_REG        ;store some data into control regs for square 1
         lda #$94                   ;and fetch another byte of data, used to give
-        sta SND_SQUARE1_REG+1      ;death music its unique sound
+        sta apu::SQUARE1_REG+1      ;death music its unique sound
         sta AltRegContentFlag
         bne FetchSqu1MusicData     ;unconditional branch
 
@@ -15760,11 +15737,11 @@ MiscSqu1MusicTasks:
               beq NoDecEnv2
               dec Squ1_EnvelopeDataCtrl  ;decrement unless already zero
 NoDecEnv2:    jsr LoadEnvelopeData       ;do a load of envelope data
-              sta SND_SQUARE1_REG        ;based on offset set by first load
+              sta apu::SQUARE1_REG        ;based on offset set by first load
 DeathMAltReg: lda AltRegContentFlag      ;check for alternate control reg data
               bne DoAltLoad
               lda #$7f                   ;load this value if zero, the alternate value
-DoAltLoad:    sta SND_SQUARE1_REG+1      ;if nonzero, and let's move on
+DoAltLoad:    sta apu::SQUARE1_REG+1      ;if nonzero, and let's move on
 
 HandleTriangleMusic:
         lda MusicOffset_Triangle
@@ -15778,7 +15755,7 @@ HandleTriangleMusic:
         jsr ProcessLengthData     ;otherwise, it is length data
         sta Tri_NoteLenBuffer     ;save contents of A
         lda #$1f
-        sta SND_TRIANGLE_REG      ;load some default data for triangle control reg
+        sta apu::TRIANGLE_REG      ;load some default data for triangle control reg
         ldy MusicOffset_Triangle  ;fetch another byte
         inc MusicOffset_Triangle
         lda (MusicData),y
@@ -15807,7 +15784,7 @@ MediN:    lda #$1f                ;secondary besides death and d4 except win cas
 LongN:    lda #$ff                ;or any secondary (including win castle) except death and d4
 
 LoadTriCtrlReg:           
-        sta SND_TRIANGLE_REG      ;save final contents of A into control reg for triangle
+        sta apu::TRIANGLE_REG      ;save final contents of A into control reg for triangle
 
 HandleNoiseMusic:
         lda AreaMusicBuffer       ;check if playing underground or castle music
@@ -15858,9 +15835,9 @@ SilentBeat:
         lda #$10        ;silence
 
 PlayBeat:
-        sta SND_NOISE_REG    ;load beat data into noise regs
-        stx SND_NOISE_REG+2
-        sty SND_NOISE_REG+3
+        sta apu::NOISE_REG    ;load beat data into noise regs
+        stx apu::NOISE_REG+2
+        sty apu::NOISE_REG+3
 
 ExitMusicHandler:
         rts
@@ -16308,12 +16285,12 @@ Start:
              sei                          ;pretty standard 6502 type init here
              cld
              lda #%00010000               ;init PPU control register 1 
-             sta PPU_CTRL_REG1
+             sta ppu::CTRL_REG1
              ldx #$ff                     ;reset stack pointer
              txs
-VBlank1:     lda PPU_STATUS               ;wait two frames
+VBlank1:     lda ppu::STATUS               ;wait two frames
              bpl VBlank1
-VBlank2:     lda PPU_STATUS
+VBlank2:     lda ppu::STATUS
              bpl VBlank2
              ldy #ColdBootOffset          ;load default cold boot pointer
              ldx #$05                     ;this is where we check for a warm boot
@@ -16327,15 +16304,15 @@ WBootCheck:  lda TopScoreDisplay,x        ;check each score digit in the top sco
              bne ColdBoot   
              ldy #WarmBootOffset          ;if passed both, load warm boot pointer
 ColdBoot:    jsr InitializeMemory         ;clear memory using pointer in Y
-             sta SND_DELTA_REG+1          ;reset delta counter load register
+             sta apu::DELTA_REG+1          ;reset delta counter load register
              sta OperMode                 ;reset primary mode of operation
              lda #$a5                     ;set warm boot flag
              sta WarmBootValidation     
              sta PseudoRandomBitReg       ;set seed for pseudorandom register
              lda #%00001111
-             sta SND_MASTERCTRL_REG       ;enable all sound channels except dmc
+             sta apu::MASTERCTRL_REG       ;enable all sound channels except dmc
              lda #%00000110
-             sta PPU_CTRL_REG2            ;turn off clipping for OAM and background
+             sta ppu::CTRL_REG2            ;turn off clipping for OAM and background
              jsr MoveAllSpritesOffscreen
              jsr InitializeNameTables     ;initialize both name tables
              inc DisableScreenFlag        ;set flag to disable screen output
