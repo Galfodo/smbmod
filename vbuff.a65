@@ -1,0 +1,49 @@
+.include "vbuff.h"
+.include "ppulib.h"
+
+.linecont +
+.define EXTERNAL_BUFFERS WaterPaletteData, GroundPaletteData, UndergroundPaletteData, CastlePaletteData, \
+			 BowserPaletteData, \
+			 DaySnowPaletteData, NightSnowPaletteData, MushroomPaletteData, \
+			 MarioThanksMessage, LuigiThanksMessage, \
+			 ToadSaved, \
+			 PrincessSaved1, PrincessSaved2, PrincessSaved3, PrincessSaved4
+
+.define ALL_BUFFERS VRAMBuffer0, VRAMBuffer1, EXTERNAL_BUFFERS
+
+.import EXTERNAL_BUFFERS
+.import UpdateScreen
+
+.bss
+.align $100
+VRAMBuffer0: .res 64
+VRAMBuffer1: .res 192
+VRAMBufferIndex: .res 1
+
+.segment "MAIN"
+.align $100
+VRAMAddrsLow: .lobytes ALL_BUFFERS 
+VRAMAddrsHi: .hibytes ALL_BUFFERS
+
+.proc UpdateScreenWithBuffer
+	ldx VRAMBufferIndex	;load control for pointer to buffer contents
+	lda VRAMAddrsLow,x	;set indirect at $00 to pointer
+	sta $00
+	lda VRAMAddrsHi,x
+	sta $01
+	jsr UpdateScreen	;update screen with buffer contents
+	ldy #$00
+	ldx VRAMBufferIndex	;check for usage of $0341
+	cpx #VRAMBuffer::BUFFER2
+	bne ResetBuffer
+
+	iny	;get offset based on usage
+ResetBuffer:
+	ldx VRAM_Buffer_Offset,y
+	lda #0	;clear buffer header at last location
+	sta VRAM_Buffer1_Offset,x	
+	sta VRAMBuffer1,x
+	sta VRAMBufferIndex	;reinit address control to $0301
+	rts	
+.endproc
+

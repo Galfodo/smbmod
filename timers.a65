@@ -1,0 +1,41 @@
+.include "timers.h"
+
+.zeropage
+FrameCounter: .res 1
+
+.bss
+Timers:
+	.tag RT
+	.tag LT 
+LongSubTimer: .res 1
+Pretimer: .res 1
+
+.segment "MAIN"
+.proc Tick
+	lda Pretimer	;if master timer control not set, decrement
+	beq DecTimers	;all frame and interval timers
+	dec Pretimer
+	bne NoDecTimers
+
+DecTimers:
+	ldx #.sizeof(RT) - 1	;load end offset for end of frame timers
+	dec LongSubtimer	;decrement interval timer control,
+	bpl @Do	;if not expired, only frame timers will decrement
+	lda #LongSubtimerFrames - 1
+	sta LongSubtimer 	;if control for interval timers expired,
+	ldx #.sizeof(RT) + .sizeof(LT) - 1	;interval timers will decrement along with frame timers
+
+@Do: 
+	lda Timers,x	;check current timer
+	beq @Continue 	;if current timer expired, branch to skip,
+	dec Timers,x	;otherwise decrement the current timer
+
+@Continue:
+	dex	;move onto next timer
+	bpl @Do	;do this until all timers are dealt with
+
+NoDecTimers:
+	inc FrameCounter	;increment frame counter
+	rts
+.endproc
+

@@ -1,0 +1,25 @@
+.include "prand.h"
+
+.bss
+PseudoRandomBitReg: .res PRBR_LEN
+
+.segment "MAIN"
+.proc NextPseudoRandom
+	ldx #0
+	ldy #PRBR_LEN
+	lda PseudoRandomBitReg	;get first memory location of LSFR bytes
+	and #%00000010	;mask out all but d1
+	sta $00	;save here
+	lda PseudoRandomBitReg+1	;get second memory location
+	and #%00000010	;mask out all but d1
+	eor $00	;perform exclusive-OR on d1 from first and second bytes
+	clc	;if neither or both are set, carry will be clear
+	beq RotPRandomBit
+	sec	;if one or the other is set, carry will be set
+RotPRandomBit: 
+	ror PseudoRandomBitReg,x	;rotate carry into d7, and rotate last bit into carry
+	inx	;increment to next byte
+	dey	;decrement for loop
+	bne RotPRandomBit
+	rts
+.endproc

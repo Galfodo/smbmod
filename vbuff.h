@@ -1,0 +1,26 @@
+.global VRAMBufferIndex
+.global VRAMBuffer0, VRAMBuffer1
+
+.global UpdateScreenWithBuffer
+
+.enum VRAMBuffer
+	BUFFER1
+	BUFFER2
+	WATER
+	GROUND
+	UNDERGROUND
+	CASTLE
+	BOWSER
+	DAY_SNOW
+	NIGHT_SNOW
+	MUSHROOM_PLATFORM
+	THANKS_MARIO
+	THANKS_LUIGI
+	TOAD
+	PEACH1
+	PEACH2
+	PEACH3
+	PEACH4
+.endenum
+
+

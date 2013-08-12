@@ -1,0 +1,49 @@
+.include "ppulib.h"
+.include "nes.h"
+
+.import __OAM_LOAD__
+
+.bss
+Mirror_PPU_CTRL: .res 1
+Mirror_PPU_MASK: .res 1
+HorizontalScroll: .res 1
+VerticalScroll: .res 1
+DisableScreenFlag: .res 1
+Sprite0HitDetectFlag: .res 1
+
+.segment "MAIN"
+.proc InitPPULib
+	jsr MoveAllSpritesOffscreen
+	jsr InitializeNameTables	;initialize both name tables
+	inc DisableScreenFlag	;set flag to disable screen output
+	lda Mirror_PPU_CTRL
+	ora #ppu::ctrl::ENABLE_NMI ;enable NMIs
+	jmp WritePPUCtrl
+.endproc
+
+.proc PPULibOnNMI
+	lda Mirror_PPU_CTRL	;disable NMIs in mirror reg
+	and #<~ppu::ctrl::ENABLE_NMI	;save all other bits
+	sta Mirror_PPU_CTRL
+	and #<~(ppu::ctrl::ENABLE_NMI & ppu::ctrl::NT3)	;alter name table address to be $2800
+	sta ppu::CTRL	;(essentially $2000) but save other bits
+	lda Mirror_PPU_MASK	;disable OAM and background display by default
+	and #<~ppu::mask::ENABLE_ALL
+	bit DisableScreenFlag	;get screen disable flag
+	bne ScreenOff	;if set, used bits as-is
+
+	lda Mirror_PPU_MASK	;otherwise reenable bits and save them
+	ora #(ppu::mask::ENABLE_ALL & ppu::mask::DISABLE_ALL_CLIP)
+ScreenOff:	
+	sta Mirror_PPU_MASK	;save bits for later but not in register at the moment
+	and #<~ppu::mask::ENABLE_ALL 	;disable screen for now
+	sta ppu::MASK
+	bit ppu::STATUS	;reset flip-flop and reset scroll registers to zero
+	lda #0
+	jsr InitScroll
+	sta ppu::SPR_ADDR	;reset spr-ram address register
+	lda #<__OAM_LOAD__	;perform spr-ram DMA access on $0200-$02ff
+	sta SPR_DMA
+	rts
+.endproc
+
