@@ -42,5 +42,13 @@
 	SCROLL_REG = $2005
 	ADDRESS = $2006
 	DATA = $2007
+
 .endscope
+
+.struct oament
+    Y .byt
+    TILE .byt
+    ATTR .byt
+    X .byt 
+.endstruct
 

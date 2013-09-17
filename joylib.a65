@@ -1,0 +1,55 @@
+.include "2a03.h"
+.include "joylib.h"
+
+.zeropage
+A_B_Buttons: .res 1
+PreviousA_B_Buttons: .res 1
+Up_Down_Buttons: .res 1
+Left_Right_Buttons: .res 1
+
+.bss  
+SavedJoypadBits:
+SavedJoypad1Bits: .res 1
+SavedJoypad2Bits: .res 1
+JoypadBitMask: .res 1
+JoypadOverride: .res 1
+
+.segment "LIB"
+;$00 - temp joypad bit
+.proc ReadJoypads 
+    lda #$01    ;reset and clear strobe of joypad ports
+    sta joypad::PORTS
+    lsr
+    tax    ;start with joypad 1's port
+    sta joypad::PORTS
+    jsr ReadPortBits
+    inx    ;increment for joypad 2's port
+    .proc ReadPortBits
+        ldy #$08
+    PortLoop:
+        pha    ;push previous bit onto stack
+        lda joypad::PORTS,x    ;read current bit on joypad port
+        sta $00    ;check d1 and d0 of port output
+        lsr    ;this is necessary on the old
+        ora $00    ;famicom systems in japan
+        lsr
+        pla    ;read bits from stack
+        rol    ;rotate bit from carry flag
+        dey
+        bne PortLoop    ;count down bits left
+        sta SavedJoypadBits,x    ;save controller status here always
+        pha
+        and #BUTTON_SELECT || BUTTON_START    ;check for select or start
+        and JoypadBitMask,x    ;if neither saved state nor current state
+        beq Save8Bits    ;have any of these two set, branch
+        pla
+        and #%11001111    ;otherwise store without select
+        sta SavedJoypadBits,x    ;or start bits and leave
+        rts
+    Save8Bits:
+        pla
+        sta JoypadBitMask,x    ;save with all bits in another place and leave
+        rts
+    .endproc
+.endproc
+

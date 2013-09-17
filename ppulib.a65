@@ -11,39 +11,155 @@ VerticalScroll: .res 1
 DisableScreenFlag: .res 1
 Sprite0HitDetectFlag: .res 1
 
-.segment "MAIN"
+.segment "LIB"
+.align $100
 .proc InitPPULib
-	jsr MoveAllSpritesOffscreen
-	jsr InitializeNameTables	;initialize both name tables
-	inc DisableScreenFlag	;set flag to disable screen output
-	lda Mirror_PPU_CTRL
-	ora #ppu::ctrl::ENABLE_NMI ;enable NMIs
-	jmp WritePPUCtrl
+    jsr MoveAllSpritesOffscreen
+    jsr InitializeNameTables    ;initialize both name tables
+    inc DisableScreenFlag   ;set flag to disable screen output
+    lda Mirror_PPU_CTRL
+    ora #ppu::ctrl::ENABLE_NMI ;enable NMIs
+.endproc
+
+.proc WritePPUCtrl
+    sta ppu::CTRL         ;write contents of A to PPU register 1
+    sta Mirror_PPU_CTRL  ;and its mirror
+    rts
+.endproc
+
+.proc InitializeNameTables
+    lda ppu::STATUS            ;reset flip-flop
+    lda Mirror_PPU_CTRL  ;load mirror of ppu reg $2000
+    ora #%00010000            ;set sprites for first 4k and background for second 4k
+    and #%11110000            ;clear rest of lower nybble, leave higher alone
+    jsr WritePPUReg1
+    lda #$24                  ;set vram address to start of name table 1
+    jsr WriteNTAddr
+    lda #$20                  ;and then set it to name table 0
+WriteNTAddr:
+    sta ppu::ADDRESS
+    lda #$00
+    sta ppu::ADDRESS
+    ldx #$04                  ;clear name table with blank tile #24
+    ldy #$c0
+    lda #$24
+InitNTLoop:
+    sta ppu::DATA              ;count out exactly 768 tiles
+    dey
+    bne InitNTLoop
+    dex
+    bne InitNTLoop
+    ldy #64                   ;now to clear the attribute table (with zero this time)
+    txa
+    sta VRAM_Buffer1_Offset   ;init vram buffer 1 offset
+    sta VRAM_Buffer1          ;init vram buffer 1
+InitATLoop:
+    sta ppu::DATA
+    dey
+    bne InitATLoop
+    sta HorizontalScroll      ;reset scroll variables
+    sta VerticalScroll
+    jmp InitScroll            ;initialize scroll registers to zero
 .endproc
 
 .proc PPULibOnNMI
-	lda Mirror_PPU_CTRL	;disable NMIs in mirror reg
-	and #<~ppu::ctrl::ENABLE_NMI	;save all other bits
-	sta Mirror_PPU_CTRL
-	and #<~(ppu::ctrl::ENABLE_NMI & ppu::ctrl::NT3)	;alter name table address to be $2800
-	sta ppu::CTRL	;(essentially $2000) but save other bits
-	lda Mirror_PPU_MASK	;disable OAM and background display by default
-	and #<~ppu::mask::ENABLE_ALL
-	bit DisableScreenFlag	;get screen disable flag
-	bne ScreenOff	;if set, used bits as-is
+    lda Mirror_PPU_CTRL ;disable NMIs in mirror reg
+    and #<~ppu::ctrl::ENABLE_NMI    ;save all other bits
+    sta Mirror_PPU_CTRL
+    and #<~(ppu::ctrl::ENABLE_NMI & ppu::ctrl::NT3) ;alter name table address to be $2800
+    sta ppu::CTRL   ;(essentially $2000) but save other bits
+    lda Mirror_PPU_MASK ;disable OAM and background display by default
+    and #<~ppu::mask::ENABLE_ALL
+    bit DisableScreenFlag   ;get screen disable flag
+    bne ScreenOff   ;if set, used bits as-is
 
-	lda Mirror_PPU_MASK	;otherwise reenable bits and save them
-	ora #(ppu::mask::ENABLE_ALL & ppu::mask::DISABLE_ALL_CLIP)
-ScreenOff:	
-	sta Mirror_PPU_MASK	;save bits for later but not in register at the moment
-	and #<~ppu::mask::ENABLE_ALL 	;disable screen for now
-	sta ppu::MASK
-	bit ppu::STATUS	;reset flip-flop and reset scroll registers to zero
-	lda #0
-	jsr InitScroll
-	sta ppu::SPR_ADDR	;reset spr-ram address register
-	lda #<__OAM_LOAD__	;perform spr-ram DMA access on $0200-$02ff
-	sta SPR_DMA
-	rts
+    lda Mirror_PPU_MASK ;otherwise reenable bits and save them
+    ora #(ppu::mask::ENABLE_ALL & ppu::mask::DISABLE_ALL_CLIP)
+ScreenOff:  
+    sta Mirror_PPU_MASK ;save bits for later but not in register at the moment
+    and #<~ppu::mask::ENABLE_ALL    ;disable screen for now
+    sta ppu::MASK
+    bit ppu::STATUS ;reset flip-flop and reset scroll registers to zero
+    lda #0
+    jsr InitScroll
+    sta ppu::SPR_ADDR   ;reset spr-ram address register
+    lda #<__OAM_LOAD__  ;perform spr-ram DMA access on $0200-$02ff
+    sta SPR_DMA
+    rts
 .endproc
+
+WriteBufferToScreen:
+    sta ppu::ADDRESS    ;store high byte of vram address
+    iny
+    lda ($00),y    ;load next byte (second)
+    sta ppu::ADDRESS    ;store low byte of vram address
+    iny
+    lda ($00),y    ;load next byte (third)
+    asl    ;shift to left and save in stack
+    pha
+    lda Mirror_PPU_CTRL  ;load mirror of $2000,
+    ora #VRAM_COL    ;set ppu to increment by 32 by default
+    bcs :+    ;if d7 of third byte was clear, ppu will
+    and #<~VRAM_COL   ;only increment by 1
+:
+    jsr WritePPUCtrl    ;write to register
+    pla    ;pull from stack and shift to left again
+    asl
+    bcc GetLength    ;if d6 of third byte was clear, do not repeat byte
+    ora #%00000010    ;otherwise set d1 and increment Y
+    iny
+GetLength:
+    lsr    ;shift back to the right to get proper length
+    lsr    ;note that d1 will now be in carry
+    tax
+OutputToVRAM:
+    bcs RepeatByte    ;if carry set, repeat loading the same byte
+    iny    ;otherwise increment Y to load next byte
+RepeatByte:
+    lda ($00),y    ;load more data from buffer and write to vram
+    sta ppu::DATA
+    dex    ;done writing?
+    bne OutputToVRAM
+    sec    
+    tya
+    adc $00    ;add end length plus one to the indirect at $00
+    sta $00    ;to allow this routine to read another set of updates
+    lda #0
+    adc $01
+    sta $01
+    lda #$3f    ;sets vram address to $3f00
+    sta ppu::ADDRESS
+    lda #$00
+    sta ppu::ADDRESS
+    sta ppu::ADDRESS    ;then reinitializes it for some reason
+    sta ppu::ADDRESS
+UpdateScreenWithBuffer:  
+    ldx ppu::STATUS    ;reset flip-flop
+    ldy #0    ;load first byte from indirect as a pointer
+    lda ($00),y  
+    bne WriteBufferToScreen    ;if byte is zero we have no further updates to make here
+InitScroll:
+    sta ppu::SCROLL_REG    ;store contents of A into scroll registers
+    sta ppu::SCROLL_REG    ;and end whatever subroutine led us here
+    rts
+
+.proc MoveAllSpritesOffScreen
+    ldy #0
+    .proc MoveSpritesOffscreen
+        ldy #4               ;this routine moves all but sprite 0
+        lda #248    ;off the screen
+    :
+        sta __OAM_LOAD__+oament::Y,y ;write 248 into OAM data's Y coordinate
+        iny    ;which will move it off the screen
+        iny
+        iny
+        iny
+        bne :-
+        rts
+    .endproc
+.endproc
+
+.proc SpriteShuffler
+.endproc
+
 

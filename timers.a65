@@ -10,7 +10,7 @@ Timers:
 LongSubTimer: .res 1
 Pretimer: .res 1
 
-.segment "MAIN"
+.segment "LIB"
 .proc Tick
 	lda Pretimer	;if master timer control not set, decrement
 	beq DecTimers	;all frame and interval timers

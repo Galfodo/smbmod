@@ -41,8 +41,8 @@ Left_Right_Buttons    = $0c
 
 GameEngineSubroutine  = $0e
 
-Mirror_PPU_CTRL_REG1  = $0778
-Mirror_PPU_CTRL_REG2  = $0779
+Mirror_PPU_CTRL  = $0778
+Mirror_PPU_MASK  = $0779
 
 OperMode              = $0770
 OperMode_Task         = $0772
@@ -673,20 +673,20 @@ VRAM_Buffer_Offset:
       .byt <VRAM_Buffer1_Offset, <VRAM_Buffer2_Offset
 
 NonMaskableInterrupt:
-               lda Mirror_PPU_CTRL_REG1  ;disable NMIs in mirror reg
+               lda Mirror_PPU_CTRL  ;disable NMIs in mirror reg
                and #%01111111            ;save all other bits
-               sta Mirror_PPU_CTRL_REG1
+               sta Mirror_PPU_CTRL
                and #%01111110            ;alter name table address to be $2800
-               sta ppu::CTRL_REG1         ;(essentially $2000) but save other bits
-               lda Mirror_PPU_CTRL_REG2  ;disable OAM and background display by default
+               sta ppu::CTRL         ;(essentially $2000) but save other bits
+               lda Mirror_PPU_MASK  ;disable OAM and background display by default
                and #%11100110
                ldy DisableScreenFlag     ;get screen disable flag
                bne ScreenOff             ;if set, used bits as-is
-               lda Mirror_PPU_CTRL_REG2  ;otherwise reenable bits and save them
+               lda Mirror_PPU_MASK  ;otherwise reenable bits and save them
                ora #%00011110
-ScreenOff:     sta Mirror_PPU_CTRL_REG2  ;save bits for later but not in register at the moment
+ScreenOff:     sta Mirror_PPU_MASK  ;save bits for later but not in register at the moment
                and #%11100111            ;disable screen for now
-               sta ppu::CTRL_REG2
+               sta ppu::MASK
                ldx ppu::STATUS            ;reset flip-flop and reset scroll registers to zero
                lda #$00
                jsr InitScroll
@@ -709,8 +709,8 @@ InitBuffer:    ldx VRAM_Buffer_Offset,y
                sta VRAM_Buffer1_Offset,x        
                sta VRAM_Buffer1,x
                sta VRAM_Buffer_AddrCtrl  ;reinit address control to $0301
-               lda Mirror_PPU_CTRL_REG2  ;copy mirror of $2001 to register
-               sta ppu::CTRL_REG2
+               lda Mirror_PPU_MASK  ;copy mirror of $2001 to register
+               sta ppu::MASK
                jsr SoundEngine           ;play sound
                jsr ReadJoypads           ;read joypads
                jsr PauseRoutine          ;handle pause
@@ -769,9 +769,9 @@ SkipSprite0:   lda HorizontalScroll      ;set scroll registers from variables
                sta ppu::SCROLL_REG
                lda VerticalScroll
                sta ppu::SCROLL_REG
-               lda Mirror_PPU_CTRL_REG1  ;load saved mirror of $2000
+               lda Mirror_PPU_CTRL  ;load saved mirror of $2000
                pha
-               sta ppu::CTRL_REG1
+               sta ppu::CTRL
                lda GamePauseStatus       ;if in pause mode, do not perform operation mode stuff
                lsr
                bcs SkipMainOper
@@ -779,7 +779,7 @@ SkipSprite0:   lda HorizontalScroll      ;set scroll registers from variables
 SkipMainOper:  lda ppu::STATUS            ;reset flip-flop
                pla
                ora #%10000000            ;reactivate NMIs
-               sta ppu::CTRL_REG1
+               sta ppu::CTRL
                rti                       ;we are done until the next frame!
 
 ;-------------------------------------------------------------------------------------
@@ -2322,7 +2322,7 @@ JumpEngine:
 
 InitializeNameTables:
               lda ppu::STATUS            ;reset flip-flop
-              lda Mirror_PPU_CTRL_REG1  ;load mirror of ppu reg $2000
+              lda Mirror_PPU_CTRL  ;load mirror of ppu reg $2000
               ora #%00010000            ;set sprites for first 4k and background for second 4k
               and #%11110000            ;clear rest of lower nybble, leave higher alone
               jsr WritePPUReg1
@@ -2399,7 +2399,7 @@ WriteBufferToScreen:
                lda ($00),y               ;load next byte (third)
                asl                       ;shift to left and save in stack
                pha
-               lda Mirror_PPU_CTRL_REG1  ;load mirror of $2000,
+               lda Mirror_PPU_CTRL  ;load mirror of $2000,
                ora #%00000100            ;set ppu to increment by 32 by default
                bcs SetupWrites           ;if d7 of third byte was clear, ppu will
                and #%11111011            ;only increment by 1
@@ -2442,8 +2442,8 @@ InitScroll:    sta ppu::SCROLL_REG        ;store contents of A into scroll regis
 ;-------------------------------------------------------------------------------------
 
 WritePPUReg1:
-               sta ppu::CTRL_REG1         ;write contents of A to PPU register 1
-               sta Mirror_PPU_CTRL_REG1  ;and its mirror
+               sta ppu::CTRL         ;write contents of A to PPU register 1
+               sta Mirror_PPU_CTRL  ;and its mirror
                rts
 
 ;-------------------------------------------------------------------------------------
@@ -2671,10 +2671,10 @@ ClearVRLoop: sta VRAM_Buffer1-1,y      ;clear buffer at $0300-$03ff
              lda #$ff
              sta BalPlatformAlignment  ;initialize balance platform assignment flag
              lda ScreenLeft_PageLoc    ;get left side page location
-             lsr Mirror_PPU_CTRL_REG1  ;shift LSB of ppu register #1 mirror out
+             lsr Mirror_PPU_CTRL  ;shift LSB of ppu register #1 mirror out
              and #$01                  ;mask out all but LSB of page location
              ror                       ;rotate LSB of page location into carry then onto mirror
-             rol Mirror_PPU_CTRL_REG1  ;this is to set the proper PPU name table
+             rol Mirror_PPU_CTRL  ;this is to set the proper PPU name table
              jsr GetAreaMusic          ;load proper music into queue
              lda #$38                  ;load sprite shuffle amounts to be used later
              sta SprShuffleAmt+2
@@ -5351,10 +5351,10 @@ ScrollScreen:
               sta ScreenLeft_PageLoc    ;side of the screen
               and #$01                  ;get LSB of page location
               sta $00                   ;save as temp variable for PPU register 1 mirror
-              lda Mirror_PPU_CTRL_REG1  ;get PPU register 1 mirror
+              lda Mirror_PPU_CTRL  ;get PPU register 1 mirror
               and #%11111110            ;save all bits except d0
               ora $00                   ;get saved bit here and save in PPU register 1
-              sta Mirror_PPU_CTRL_REG1  ;mirror to be used to set name table later
+              sta Mirror_PPU_CTRL  ;mirror to be used to set name table later
               jsr GetScreenPosition     ;figure out where the right side is
               lda #$08
               sta ScrollIntervalTimer   ;set scroll timer (residual, not used elsewhere)
@@ -16285,7 +16285,7 @@ Start:
              sei                          ;pretty standard 6502 type init here
              cld
              lda #%00010000               ;init PPU control register 1 
-             sta ppu::CTRL_REG1
+             sta ppu::CTRL
              ldx #$ff                     ;reset stack pointer
              txs
 VBlank1:     lda ppu::STATUS               ;wait two frames
@@ -16312,11 +16312,11 @@ ColdBoot:    jsr InitializeMemory         ;clear memory using pointer in Y
              lda #%00001111
              sta apu::MASTERCTRL_REG       ;enable all sound channels except dmc
              lda #%00000110
-             sta ppu::CTRL_REG2            ;turn off clipping for OAM and background
+             sta ppu::MASK            ;turn off clipping for OAM and background
              jsr MoveAllSpritesOffscreen
              jsr InitializeNameTables     ;initialize both name tables
              inc DisableScreenFlag        ;set flag to disable screen output
-             lda Mirror_PPU_CTRL_REG1
+             lda Mirror_PPU_CTRL
              ora #%10000000               ;enable NMIs
              jsr WritePPUReg1
 EndlessLoop: jmp EndlessLoop              ;endless loop, need I say more?

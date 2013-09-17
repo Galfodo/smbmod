@@ -3,7 +3,7 @@
 .bss
 PseudoRandomBitReg: .res PRBR_LEN
 
-.segment "MAIN"
+.segment "LIB"
 .proc NextPseudoRandom
 	ldx #0
 	ldy #PRBR_LEN
